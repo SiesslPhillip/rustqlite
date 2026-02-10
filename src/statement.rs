@@ -10,7 +10,7 @@ pub enum SelectError {
     NotEnoughArgs { got: usize, expected: usize },
 }
 
-pub fn insert(cmd: &str) -> Result<i64, InsertError> {
+pub fn insert(cmd: &str) -> Result<i32, InsertError> {
     let row_to_insert: Vec<&str> = cmd
         .strip_prefix("insert ")
         .unwrap()
@@ -22,14 +22,14 @@ pub fn insert(cmd: &str) -> Result<i64, InsertError> {
             expected: 3,
         });
     } else {
-        let id: i64 = row_to_insert[0].parse::<i64>().unwrap();
+        let id: i32 = row_to_insert[0].parse::<i32>().unwrap();
         insert_row(id, row_to_insert[1], row_to_insert[2]);
         return Ok(id);
     }
     Ok(0)
 }
 
-pub fn select(cmd: &str) -> Result<i64, SelectError> {
+pub fn select(cmd: &str) -> Result<i32, SelectError> {
     let row_to_select: Vec<&str> = cmd
         .strip_prefix("select ")
         .unwrap()
@@ -41,7 +41,7 @@ pub fn select(cmd: &str) -> Result<i64, SelectError> {
             expected: 1,
         });
     } else {
-        let id: i64 = row_to_select[0].parse::<i64>().unwrap();
+        let id: i32 = row_to_select[0].parse::<i32>().unwrap();
         match get_row_by_id(id) {
             Some(row) => {
                 println!("{row:?}");
