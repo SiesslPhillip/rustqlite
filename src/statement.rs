@@ -1,4 +1,4 @@
-use crate::table::{Table, get_row_by_id, insert_row, Row};
+use crate::table::{Table, insert_row, Row, fetch_row};
 
 #[derive(Debug)]
 pub enum InsertError {
@@ -42,12 +42,12 @@ pub fn select(cmd: &str) -> Result<i32, SelectError> {
         });
     } else {
         let id: i32 = row_to_select[0].parse::<i32>().unwrap();
-        match get_row_by_id(id) {
-            Some(row) => {
+        match fetch_row(id) {
+            Ok(row) => {
                 println!("{row:?}");
                 return Ok(id)
             },
-            None => print!("Row does not exist.")
+            Err(err) => print!("Row does not exist.")
         }
     }
     Ok(0)
