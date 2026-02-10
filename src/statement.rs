@@ -44,7 +44,10 @@ pub fn select(cmd: &str) -> Result<i32, SelectError> {
         let id: i32 = row_to_select[0].parse::<i32>().unwrap();
         match fetch_row(id) {
             Ok(row) => {
-                println!("{row:?}");
+                let name = std::str::from_utf8(&row.name).unwrap();
+                let email = std::str::from_utf8(&row.email).unwrap();
+                let id = row.id;
+                println!("ID: {id}; name: {name}; email: {email}");
                 return Ok(id)
             },
             Err(err) => print!("Row does not exist.")
