@@ -54,23 +54,22 @@ impl Table {
 }
 
 pub fn insert_row(id: i32, name: &str, email: &str) {
-    let page_num: usize = id as usize / ROWS_PER_PAGE;
-    let row_offset: usize = id as usize % ROWS_PER_PAGE;
-    let byte_offset: usize = row_offset * ROW_SIZE;
+    let calculated_offset = calc_offset(id);
+    let page_num = calculated_offset.1;
+    let byte_offset = calculated_offset.0;
 
     let mut table = TABLE.lock().unwrap();
-
     let page: &mut [u8; PAGE_SIZE] = table.get_page_mut(page_num);
 
-    page[byte_offset + ID_OFFSET .. byte_offset + ID_OFFSET + ID_SIZE]
+    page[byte_offset + ID_OFFSET..byte_offset + ID_OFFSET + ID_SIZE]
         .copy_from_slice(&id.to_le_bytes());
 
     let name_byte = to_fixed_32_truncate(name);
-    page[byte_offset + USERNAME_OFFSET .. byte_offset + USERNAME_OFFSET + USERNAME_SIZE]
+    page[byte_offset + USERNAME_OFFSET..byte_offset + USERNAME_OFFSET + USERNAME_SIZE]
         .copy_from_slice(&name_byte);
 
     let email_byte = to_fixed_255_truncate(email);
-    page[byte_offset + EMAIL_OFFSET .. byte_offset + EMAIL_OFFSET + EMAIL_SIZE]
+    page[byte_offset + EMAIL_OFFSET..byte_offset + EMAIL_OFFSET + EMAIL_SIZE]
         .copy_from_slice(&email_byte);
 }
 
@@ -90,20 +89,28 @@ pub fn to_fixed_255_truncate(s: &str) -> [u8; 255] {
     out
 }
 
-pub fn fetch_row(id: i32) -> Result<Row, std::io::Error>{
+fn calc_offset(id: i32) -> (usize, usize) {
     let page_num: usize = id as usize / ROWS_PER_PAGE;
     let row_offset: usize = id as usize % ROWS_PER_PAGE;
     let byte_offset: usize = row_offset * ROW_SIZE;
+    (byte_offset, page_num)
+}
 
+pub fn fetch_row(id: i32) -> Result<Row, std::io::Error> {
+    let calculated_offset = calc_offset(id);
+    let page_num = calculated_offset.1;
+    let byte_offset = calculated_offset.0;
     let mut table = TABLE.lock().unwrap();
 
     let page: &mut [u8; PAGE_SIZE] = table.get_page_mut(page_num);
 
-    let name_byte: &[u8] = &page[byte_offset + USERNAME_OFFSET .. byte_offset + USERNAME_OFFSET + USERNAME_SIZE];
-    let email_byte : &[u8] = &page[byte_offset + EMAIL_OFFSET .. byte_offset + EMAIL_OFFSET + EMAIL_SIZE];
+    let name_byte: &[u8] =
+        &page[byte_offset + USERNAME_OFFSET..byte_offset + USERNAME_OFFSET + USERNAME_SIZE];
+    let email_byte: &[u8] =
+        &page[byte_offset + EMAIL_OFFSET..byte_offset + EMAIL_OFFSET + EMAIL_SIZE];
 
-    Ok(Row{
-        id: id,
+    Ok(Row {
+        id,
         name: slice_to_32(name_byte).unwrap(),
         email: slice_to_255(email_byte).unwrap(),
     })
@@ -115,4 +122,3 @@ fn slice_to_32(b: &[u8]) -> Result<[u8; 32], &'static str> {
 fn slice_to_255(b: &[u8]) -> Result<[u8; 255], &'static str> {
     b.try_into().map_err(|_| "expected 255 bytes")
 }
-

@@ -1,6 +1,6 @@
-use crate::table::{Table, insert_row, Row, fetch_row};
+use crate::table::{fetch_row, insert_row};
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum InsertError {
     NotEnoughArgs { got: usize, expected: usize },
 }
@@ -48,9 +48,9 @@ pub fn select(cmd: &str) -> Result<i32, SelectError> {
                 let email = std::str::from_utf8(&row.email).unwrap();
                 let id = row.id;
                 println!("ID: {id}; name: {name}; email: {email}");
-                return Ok(id)
-            },
-            Err(err) => print!("Row does not exist.")
+                return Ok(id);
+            }
+            Err(err) => print!("Row does not exist."),
         }
     }
     Ok(0)

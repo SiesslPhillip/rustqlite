@@ -1,12 +1,13 @@
 mod btree;
 mod statement;
+mod statement_test;
 mod table;
 
-use crate::MetaCommandCode::{MetaCommandUnknown};
+use crate::MetaCommandCode::MetaCommandUnknown;
 use crate::PrepareStatementCode::{
     PrepareStatementFailure, PrepareStatementInsert, PrepareStatementSelect,
 };
-use crate::StatementCode::{StatementSuccess};
+use crate::StatementCode::StatementSuccess;
 use crate::statement::select;
 use std::io;
 use std::io::Error;
