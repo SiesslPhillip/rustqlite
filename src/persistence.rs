@@ -8,7 +8,7 @@ use std::io::{Error, Seek, SeekFrom, Write};
 pub struct Pager {
     pub(crate) file: File,
     pub(crate) content_length: usize,
-    pub(crate) pages: [Option<Page>; TABLE_MAX_PAGES],
+    pub(crate) pages: [Option<Box<Page>>; TABLE_MAX_PAGES],
 }
 
 impl Pager {
@@ -20,9 +20,9 @@ impl Pager {
             ));
         }
 
-        let page = self.pages[page_num].ok_or_else(|| {
-            io::Error::new(io::ErrorKind::InvalidInput, "tried to flush null page")
-        })?;
+        let page = self.pages[page_num]
+            .as_ref()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "tried to flush null page"))?;
 
         if size > PAGE_SIZE {
             return Err(io::Error::new(

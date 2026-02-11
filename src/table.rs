@@ -4,6 +4,7 @@ use std::fs::OpenOptions;
 use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::mem::size_of;
 use std::sync::{LazyLock, Mutex};
+use crate::cursor::Cursor;
 
 pub const USERNAME_LEN: usize = 32;
 pub const EMAIL_LEN: usize = 255;
@@ -30,9 +31,9 @@ pub(crate) struct Row {
     pub(crate) email: [u8; EMAIL_LEN],
 }
 
-pub static TABLE: LazyLock<Mutex<Table>> = LazyLock::new(|| {
-    Mutex::new(Table::db_open(String::from("database.db")).expect("Cant Create or Read Database!"))
-});
+// pub static TABLE: LazyLock<Mutex<Table>> = LazyLock::new(|| {
+//     Mutex::new(Table::db_open(String::from("database.db")).expect("Cant Create or Read Database!"))
+// });
 
 pub type Page = [u8; PAGE_SIZE];
 
@@ -42,7 +43,7 @@ pub struct Table {
 }
 
 impl Table {
-    pub fn db_open(filename: String) -> io::Result<Self> {
+    pub fn db_open(filename: &String) -> io::Result<Self> {
         let mut file = OpenOptions::new()
             .read(true)
             .write(true)
@@ -84,6 +85,8 @@ impl Table {
         self.get_page(page_num).expect("get_page failed")
     }
 
+
+
     pub fn get_page(&mut self, page_num: usize) -> Result<&mut Page, SelectError> {
         if page_num >= TABLE_MAX_PAGES {
             return Err(SelectError::OutOfBounds);
@@ -114,35 +117,36 @@ impl Table {
                     .unwrap();
             }
 
-            self.pager.pages[page_num] = Some(page);
+            self.pager.pages[page_num] = Some(Box::from(page));
         }
 
         Ok(self.pager.pages[page_num].as_mut().unwrap())
     }
 }
 
-pub fn insert_row(id: i32, name: &str, email: &str) {
-    let calculated_offset = calc_offset(id);
-    let page_num = calculated_offset.1;
-    let byte_offset = calculated_offset.0;
+pub fn insert_row(cur: &mut Cursor, id: i32, name: &str, email: &str) {
+    cur.row_num = id as usize;
+    let page_num = cur.row_num / ROWS_PER_PAGE;
+    let byte_offset = cur.byte_offset();
 
-    let mut table = TABLE.lock().unwrap();
-    let page: &mut [u8; PAGE_SIZE] = table.get_page_mut(page_num);
+    {
+        let page: &mut Page = cur.value();
 
-    page[byte_offset + ID_OFFSET..byte_offset + ID_OFFSET + ID_SIZE]
-        .copy_from_slice(&id.to_le_bytes());
+        page[byte_offset + ID_OFFSET..byte_offset + ID_OFFSET + ID_SIZE]
+            .copy_from_slice(&id.to_le_bytes());
 
-    let name_byte = to_fixed_32_truncate(name);
-    page[byte_offset + USERNAME_OFFSET..byte_offset + USERNAME_OFFSET + USERNAME_SIZE]
-        .copy_from_slice(&name_byte);
+        let name_byte = to_fixed_32_truncate(name);
+        page[byte_offset + USERNAME_OFFSET..byte_offset + USERNAME_OFFSET + USERNAME_SIZE]
+            .copy_from_slice(&name_byte);
 
-    let email_byte = to_fixed_255_truncate(email);
-    page[byte_offset + EMAIL_OFFSET..byte_offset + EMAIL_OFFSET + EMAIL_SIZE]
-        .copy_from_slice(&email_byte);
+        let email_byte = to_fixed_255_truncate(email);
+        page[byte_offset + EMAIL_OFFSET..byte_offset + EMAIL_OFFSET + EMAIL_SIZE]
+            .copy_from_slice(&email_byte);
+    }
 
     let end_of_row = page_num * PAGE_SIZE + byte_offset + ROW_SIZE;
-    table.pager.content_length = table.pager.content_length.max(end_of_row);
-    table.num_rows = table.num_rows.max(id as usize + 1);
+    cur.table.pager.content_length = cur.table.pager.content_length.max(end_of_row);
+    cur.table.num_rows = cur.table.num_rows.max(cur.row_num + 1);
 }
 
 pub fn to_fixed_32_truncate(s: &str) -> [u8; 32] {
@@ -161,20 +165,12 @@ pub fn to_fixed_255_truncate(s: &str) -> [u8; 255] {
     out
 }
 
-fn calc_offset(id: i32) -> (usize, usize) {
-    let page_num: usize = id as usize / ROWS_PER_PAGE;
-    let row_offset: usize = id as usize % ROWS_PER_PAGE;
-    let byte_offset: usize = row_offset * ROW_SIZE;
-    (byte_offset, page_num)
-}
+pub fn fetch_row(cur: &mut Cursor, id: i32) -> Result<Row, std::io::Error> {
+    cur.row_num = id as usize;
+    let page_num = cur.row_num / ROWS_PER_PAGE;
+    let byte_offset = cur.byte_offset();
 
-pub fn fetch_row(id: i32) -> Result<Row, std::io::Error> {
-    let calculated_offset = calc_offset(id);
-    let page_num = calculated_offset.1;
-    let byte_offset = calculated_offset.0;
-    let mut table = TABLE.lock().unwrap();
-
-    let page: &mut [u8; PAGE_SIZE] = table.get_page_mut(page_num);
+    let page: &mut [u8; PAGE_SIZE] = cur.table.get_page_mut(page_num);
 
     let name_byte: &[u8] =
         &page[byte_offset + USERNAME_OFFSET..byte_offset + USERNAME_OFFSET + USERNAME_SIZE];

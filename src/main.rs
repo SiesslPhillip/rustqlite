@@ -1,4 +1,4 @@
-mod btree;
+// mod btree;
 mod cursor;
 mod persistence;
 mod statement;
@@ -10,11 +10,21 @@ use crate::PrepareStatementCode::{
     PrepareStatementFailure, PrepareStatementInsert, PrepareStatementSelect,
 };
 use crate::StatementCode::StatementSuccess;
-use crate::statement::select;
-use crate::table::{TABLE, Table};
+use crate::statement::{select, InsertError};
+use crate::table::{Table};
 use std::io;
 use std::io::Error;
 use std::process::exit;
+use clap::Parser;
+use crate::cursor::Cursor;
+
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+pub struct Args {
+    /// Name of the database
+    #[arg(short, long)]
+    database: String,
+}
 
 enum StatementCode {
     StatementSuccess,
@@ -54,7 +64,8 @@ fn main() -> Result<(), Error> {
 fn exec_meta_command(cmd: &str) -> Result<MetaCommandCode, Error> {
     if cmd == ".exit" {
         println!("Shutting down database.");
-        let result = TABLE.lock().unwrap().db_close();
+        let args = Args::parse();
+        let result = Cursor::new(&mut Table::db_open(&args.database)?).table.db_close();
         match result {
             Ok(res) => println!("Flushed to disk complete!"),
             Err(err) => {}
@@ -73,15 +84,24 @@ fn prepare_statement(cmd: &str) -> Result<PrepareStatementCode, Error> {
     Ok(PrepareStatementFailure)
 }
 
-fn exec_statement(cmd: &str, statment_type: PrepareStatementCode) -> Result<StatementCode, Error> {
-    match statment_type {
+fn exec_statement(cmd: &str, statement_type: PrepareStatementCode) -> Result<StatementCode, Error> {
+    let args = Args::parse();
+    let mut table = Table::db_open(&args.database)?;
+    let curr = &mut Cursor::new(&mut table);
+    match statement_type {
         PrepareStatementSelect => {
-            let _ = select(cmd);
-            println!("This is a select Statement");
+            let _ = select(curr, cmd);
         }
         PrepareStatementInsert => {
-            println!("This is a insert Statement");
-            let _ = statement::insert(cmd);
+            let _ = statement::insert(curr, cmd);
+            let result = curr.table.db_close();
+            match result {
+                Ok(_) => {},
+                Err(err) => {
+                    println!("Error flushing after insert!");
+                    return Err(err)
+                }
+            }
         }
         PrepareStatementFailure => {
             println!("Statement failed to be classified")
