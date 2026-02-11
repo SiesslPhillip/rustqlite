@@ -8,6 +8,7 @@ pub enum InsertError {
 #[derive(Debug)]
 pub enum SelectError {
     NotEnoughArgs { got: usize, expected: usize },
+    OutOfBounds
 }
 
 pub fn insert(cmd: &str) -> Result<i32, InsertError> {
@@ -24,9 +25,8 @@ pub fn insert(cmd: &str) -> Result<i32, InsertError> {
     } else {
         let id: i32 = row_to_insert[0].parse::<i32>().unwrap();
         insert_row(id, row_to_insert[1], row_to_insert[2]);
-        return Ok(id);
+        Ok(id)
     }
-    Ok(0)
 }
 
 pub fn select(cmd: &str) -> Result<i32, SelectError> {

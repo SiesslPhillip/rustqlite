@@ -1,7 +1,9 @@
 mod btree;
+mod persistence;
 mod statement;
 mod statement_test;
 mod table;
+mod cursor;
 
 use crate::MetaCommandCode::MetaCommandUnknown;
 use crate::PrepareStatementCode::{
@@ -12,6 +14,7 @@ use crate::statement::select;
 use std::io;
 use std::io::Error;
 use std::process::exit;
+use crate::table::{Table, TABLE};
 
 enum StatementCode {
     StatementSuccess,
@@ -51,6 +54,11 @@ fn main() -> Result<(), Error> {
 fn exec_meta_command(cmd: &str) -> Result<MetaCommandCode, Error> {
     if cmd == ".exit" {
         println!("Shutting down database.");
+        let result = TABLE.lock().unwrap().db_close();
+        match result {
+            Ok(res) => println!("Flushed to disk complete!"),
+            Err(err) => {}
+        }
         exit(0);
     }
     Ok(MetaCommandUnknown)

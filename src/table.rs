@@ -1,7 +1,9 @@
-use std::error::Error;
-use std::io;
-use std::io::Read;
+use crate::persistence::Pager;
+use std::fs::OpenOptions;
+use std::io::{self, Read, Seek, SeekFrom, Write};
+use std::mem::size_of;
 use std::sync::{LazyLock, Mutex};
+use crate::statement::SelectError;
 
 pub const USERNAME_LEN: usize = 32;
 pub const EMAIL_LEN: usize = 255;
@@ -28,28 +30,88 @@ pub(crate) struct Row {
     pub(crate) email: [u8; EMAIL_LEN],
 }
 
-static TABLE: LazyLock<Mutex<Table>> = LazyLock::new(|| Mutex::new(Table::new()));
+pub static TABLE: LazyLock<Mutex<Table>> = LazyLock::new(|| Mutex::new(Table::db_open(String::from("database.db")).expect("Cant Create or Read Database!")));
 
-pub type Page = Box<[u8; PAGE_SIZE]>;
+pub type Page = [u8; PAGE_SIZE];
 
 pub struct Table {
-    pub num_rows: u32,
-    pub pages: [Option<Page>; TABLE_MAX_PAGES],
+    pub num_rows: usize,
+    pub pager: Pager,
 }
 
 impl Table {
-    pub fn new() -> Self {
-        Self {
-            num_rows: 0,
-            pages: std::array::from_fn(|_| None),
-        }
+    pub fn db_open(filename: String) -> io::Result<Self> {
+        let mut file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open(&filename)?;
+
+        // lseek(fd, 0, SEEK_END)
+        let file_length = file.seek(SeekFrom::End(0))?;
+
+        Ok(Self {
+            num_rows: file_length as usize/ROW_SIZE,
+            pager: Pager {
+                file,
+                content_length: file_length as usize,
+                pages: std::array::from_fn(|_| None),
+            },
+        })
     }
 
-    pub fn get_page_mut(&mut self, page_num: usize) -> &mut [u8; PAGE_SIZE] {
-        assert!(page_num < TABLE_MAX_PAGES);
-        self.pages[page_num]
-            .get_or_insert_with(|| Box::new([0u8; PAGE_SIZE]))
-            .as_mut()
+    pub fn db_close(&mut self) -> io::Result<()> {
+        let num_full_pages = self.pager.content_length / PAGE_SIZE;
+        for i in 0..num_full_pages {
+            if self.pager.pages[i].is_some() {
+                self.pager.flush(i, PAGE_SIZE)?;
+            }
+        }
+
+        let remainder = self.pager.content_length % PAGE_SIZE;
+        if remainder != 0 {
+            let last = num_full_pages;
+            if self.pager.pages[last].is_some() {
+                self.pager.flush(last, remainder)?;
+            }
+        }
+
+        Ok(())
+    }
+    pub fn get_page_mut(&mut self, page_num: usize) -> &mut Page {
+        self.get_page(page_num).expect("get_page failed")
+    }
+
+    pub fn get_page(&mut self, page_num: usize) -> Result<&mut Page, SelectError> {
+        if page_num >= TABLE_MAX_PAGES {
+            return Err(SelectError::OutOfBounds);
+        }
+
+        if self.pager.pages[page_num].is_none() {
+            let mut page = [0u8; PAGE_SIZE];
+
+            let mut num_pages = self.pager.content_length / PAGE_SIZE;
+            if self.pager.content_length % PAGE_SIZE != 0 {
+                num_pages += 1;
+            }
+
+            if page_num < num_pages {
+                let offset = (page_num * PAGE_SIZE) as u64;
+                self.pager.file.seek(SeekFrom::Start(offset)).unwrap();
+
+                let bytes_to_read = if page_num == num_pages - 1 && (self.pager.content_length % PAGE_SIZE != 0) {
+                    self.pager.content_length % PAGE_SIZE
+                } else {
+                    PAGE_SIZE
+                };
+
+                self.pager.file.read_exact(&mut page[..bytes_to_read]).unwrap();
+            }
+
+            self.pager.pages[page_num] = Some(page);
+        }
+
+        Ok(self.pager.pages[page_num].as_mut().unwrap())
     }
 }
 
@@ -71,6 +133,10 @@ pub fn insert_row(id: i32, name: &str, email: &str) {
     let email_byte = to_fixed_255_truncate(email);
     page[byte_offset + EMAIL_OFFSET..byte_offset + EMAIL_OFFSET + EMAIL_SIZE]
         .copy_from_slice(&email_byte);
+
+    let end_of_row = page_num * PAGE_SIZE + byte_offset + ROW_SIZE;
+    table.pager.content_length = table.pager.content_length.max(end_of_row);
+    table.num_rows = table.num_rows.max(id as usize + 1);
 }
 
 pub fn to_fixed_32_truncate(s: &str) -> [u8; 32] {
