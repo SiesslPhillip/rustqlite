@@ -8,7 +8,7 @@ pub enum InsertError {
 #[derive(Debug)]
 pub enum SelectError {
     NotEnoughArgs { got: usize, expected: usize },
-    OutOfBounds
+    OutOfBounds,
 }
 
 pub fn insert(cmd: &str) -> Result<i32, InsertError> {

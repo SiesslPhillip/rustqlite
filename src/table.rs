@@ -1,9 +1,9 @@
 use crate::persistence::Pager;
+use crate::statement::SelectError;
 use std::fs::OpenOptions;
 use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::mem::size_of;
 use std::sync::{LazyLock, Mutex};
-use crate::statement::SelectError;
 
 pub const USERNAME_LEN: usize = 32;
 pub const EMAIL_LEN: usize = 255;
@@ -30,7 +30,9 @@ pub(crate) struct Row {
     pub(crate) email: [u8; EMAIL_LEN],
 }
 
-pub static TABLE: LazyLock<Mutex<Table>> = LazyLock::new(|| Mutex::new(Table::db_open(String::from("database.db")).expect("Cant Create or Read Database!")));
+pub static TABLE: LazyLock<Mutex<Table>> = LazyLock::new(|| {
+    Mutex::new(Table::db_open(String::from("database.db")).expect("Cant Create or Read Database!"))
+});
 
 pub type Page = [u8; PAGE_SIZE];
 
@@ -51,7 +53,7 @@ impl Table {
         let file_length = file.seek(SeekFrom::End(0))?;
 
         Ok(Self {
-            num_rows: file_length as usize/ROW_SIZE,
+            num_rows: file_length as usize / ROW_SIZE,
             pager: Pager {
                 file,
                 content_length: file_length as usize,
@@ -99,13 +101,17 @@ impl Table {
                 let offset = (page_num * PAGE_SIZE) as u64;
                 self.pager.file.seek(SeekFrom::Start(offset)).unwrap();
 
-                let bytes_to_read = if page_num == num_pages - 1 && (self.pager.content_length % PAGE_SIZE != 0) {
-                    self.pager.content_length % PAGE_SIZE
-                } else {
-                    PAGE_SIZE
-                };
+                let bytes_to_read =
+                    if page_num == num_pages - 1 && (self.pager.content_length % PAGE_SIZE != 0) {
+                        self.pager.content_length % PAGE_SIZE
+                    } else {
+                        PAGE_SIZE
+                    };
 
-                self.pager.file.read_exact(&mut page[..bytes_to_read]).unwrap();
+                self.pager
+                    .file
+                    .read_exact(&mut page[..bytes_to_read])
+                    .unwrap();
             }
 
             self.pager.pages[page_num] = Some(page);

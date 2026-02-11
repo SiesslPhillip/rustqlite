@@ -1,9 +1,9 @@
 mod btree;
+mod cursor;
 mod persistence;
 mod statement;
 mod statement_test;
 mod table;
-mod cursor;
 
 use crate::MetaCommandCode::MetaCommandUnknown;
 use crate::PrepareStatementCode::{
@@ -11,10 +11,10 @@ use crate::PrepareStatementCode::{
 };
 use crate::StatementCode::StatementSuccess;
 use crate::statement::select;
+use crate::table::{TABLE, Table};
 use std::io;
 use std::io::Error;
 use std::process::exit;
-use crate::table::{Table, TABLE};
 
 enum StatementCode {
     StatementSuccess,
